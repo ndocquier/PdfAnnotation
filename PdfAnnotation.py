@@ -97,6 +97,20 @@ class AnnotationProject:
 
 
 #***********************************************************************
+
+def loadProject() :
+    fp = open('my_json.pick', 'rb')
+    prj = pickle.load(fp)
+    fp.close()      
+    return prj
+    
+    
+def saveProject(prj):
+    fp = open('my_json.pick', 'wb')
+    pickle.dump(prj, fp)  
+    fp.close()    
+    
+#***********************************************************************
 #***********************************************************************
 #***********************************************************************
 
@@ -305,20 +319,113 @@ class MainFrame(wx.Frame):
         fp.close()  
         self.updatePage()    
         
-        
+
 ########################################################################
-class Main(wx.App):
-    """"""
- 
-    #----------------------------------------------------------------------
-    def __init__(self, redirect=False, filename=None):
-        """Constructor"""
-        wx.App.__init__(self, redirect, filename)
-        dlg = MainFrame()
-        dlg.Show()
- 
-#----------------------------------------------------------------------
-if __name__ == "__main__":
-    app = Main()
+
+from pyPdf import PdfFileWriter, PdfFileReader
+import StringIO
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+
+
+import pickle
+
+annotationProject = loadProject()
+
+
+sourceFile = "/home/ndocquier/Documents/test/pyDragAndDrop/gs/Extrait/Extrait.pdf"
+
+
+# read the base document PDF
+annotedDocument = PdfFileReader(file(sourceFile, "rb"))
+outputDoc = PdfFileWriter()
+
+nbPages = annotedDocument.getNumPages()
+
+
+# Annotate the pages of the base document
+annexCount = 0
+dx = -20
+dy = -8
+for i in range (nbPages):
     
-    app.MainLoop()
+    
+    packet = StringIO.StringIO()
+    # create a new PDF with Reportlab
+    can = canvas.Canvas(packet, pagesize=A4)
+    
+    # set color
+    can.setFillColorRGB(1,0,0)
+    
+    # insert the annotations for the current page
+    for n in annotationProject.annotations:
+        if n.pageNb==i+1:
+            annexCount = annexCount+1
+            can.drawString(n.posX*A4[0]+dx, (1-n.posY)*A4[1]+dy, "An. " + str(annexCount) +" - "+n.getText())
+    
+    
+    can.save()
+    
+    packet.seek(0)
+    
+    notePage = PdfFileReader(packet)
+    
+    page = annotedDocument.getPage(i)
+    page.mergePage(notePage.getPage(0))
+    
+    outputDoc.addPage(page)
+    
+# Append the apendix documents
+annexCount = 0
+
+for n in annotationProject.annotations:
+    # increment the appendix counter
+    annexCount = annexCount+1
+    
+    # get the PDF of the appendix document
+    apendixDoc = PdfFileReader(file(n.annotationObject.filename, "rb"))
+    
+    # Create a canvas to add annotation (file name of the appendix doc)
+    packet = StringIO.StringIO()
+    can = canvas.Canvas(packet, pagesize=A4)
+    
+    # set color
+    can.setFillColorRGB(1,0,0)
+    
+    # insert the file name of the document
+    can.drawString(150, 0.985*A4[1], "Annexe " + str(annexCount) +" - "+n.getText())
+    can.save()
+    
+    packet.seek(0)
+    notePage = PdfFileReader(packet)
+
+    # annotate each page of the appendix doc and append it to the global output doc
+    for i in range(apendixDoc.getNumPages()):
+        page = apendixDoc.getPage(i)
+        page.mergePage(notePage.getPage(0))
+        
+        outputDoc.addPage(page) 
+    
+# finally, write "output" to a real file
+outputStream = file("testout.pdf", "wb")
+outputDoc.write(outputStream)
+outputStream.close()
+
+
+########################################################################
+
+#class Main(wx.App):
+    #""""""
+ 
+    ##----------------------------------------------------------------------
+    #def __init__(self, redirect=False, filename=None):
+        #"""Constructor"""
+        #wx.App.__init__(self, redirect, filename)
+        #dlg = MainFrame()
+        #dlg.Show()
+ 
+##----------------------------------------------------------------------
+#if __name__ == "__main__":
+    #app = Main()
+    
+    #app.MainLoop()
