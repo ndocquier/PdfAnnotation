@@ -3,6 +3,7 @@ import ntpath
 import json
 import pickle
 import glob
+import functools
 
 #***********************************************************************
 class AnnotedDocument:
@@ -10,6 +11,7 @@ class AnnotedDocument:
     
     _pageNumber = 0
     _pageImages = []
+    _filePath = ""
     
     #-------------------------------------------------------------------
     def __init__(self, filepath):
@@ -17,13 +19,16 @@ class AnnotedDocument:
         
         self._pageImages=sorted(glob.glob(filepath+"/*.png"))
         self._pageNumber = len(self._pageImages)
-        print self._pageImages
+        self._filePath = filepath+"/Extrait.pdf"
         
     def getPageNb(self):
         return self._pageNumber
         
     def getPageImage(self, pageNb):
         return self._pageImages[pageNb-1]
+        
+    def getFilePath(self):
+        return self._filePath    
 
 #***********************************************************************
 class AnnotationObject:
@@ -72,6 +77,23 @@ class Annotation:
     def getText(self):
         return self.annotationObject.getText()
 
+def compareAnnotation(n1, n2):
+    if n1.pageNb == n2.pageNb:
+        if n1.posY > n2.posY:
+            return 1
+        elif n1.posY == n2.posY:
+            return 0
+        else:
+            return -1
+    else:
+        if n1.pageNb > n2.pageNb:
+            return 1
+        elif n1.pageNb == n2.pageNb:
+            return 0
+        else:
+            return -1
+        
+
 #***********************************************************************
 class AnnotationProject:
     
@@ -94,7 +116,12 @@ class AnnotationProject:
         #note2.pageNb=2
         #self.annotations.append(note2)
 
-
+    def sortAnnotations(self):
+        self.annotations.sort(key=functools.cmp_to_key(compareAnnotation))
+        
+    def printAnnotations(self):
+        for n in self.annotations:
+            print n.getText()
 
 #***********************************************************************
 
@@ -109,6 +136,117 @@ def saveProject(prj):
     fp = open('my_json.pick', 'wb')
     pickle.dump(prj, fp)  
     fp.close()    
+    
+    
+#***********************************************************************
+#***********************************************************************
+#***********************************************************************
+
+#  EXPORTING THE PROJECT TO PDF
+
+#***********************************************************************
+
+
+from pyPdf import PdfFileWriter, PdfFileReader
+import StringIO
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+
+
+import pickle
+
+#annotationProject = loadProject()
+
+
+#sourceFile = "/home/ndocquier/Documents/test/pyDragAndDrop/gs/Extrait/Extrait.pdf"
+
+def exportAnnotationsToPdf(prj):
+
+    # retrieve the path to the annoted PDF
+    sourceFile = prj.mainDocument.getFilePath()
+    
+    print "sourcfile: "+sourceFile
+
+    # read the base document PDF
+    annotedDocument = PdfFileReader(file(sourceFile, "rb"))
+    outputDoc = PdfFileWriter()
+
+    # store the number of pages in the original document
+    nbPages = annotedDocument.getNumPages()
+
+
+    # Annotate the pages of the base document
+    annexCount = 0
+    dx = -20
+    dy = -8
+    for i in range (nbPages):
+        
+        
+        packet = StringIO.StringIO()
+        # create a new PDF with Reportlab
+        can = canvas.Canvas(packet, pagesize=A4)
+        
+        # set color
+        can.setFillColorRGB(1,0,0)
+        
+        # insert the annotations for the current page
+        for n in prj.annotations:
+            if n.pageNb==i+1:
+                annexCount = annexCount+1
+                can.drawString(n.posX*A4[0]+dx, (1-n.posY)*A4[1]+dy, "An. " + str(annexCount) +" - "+n.getText())
+        
+        
+        can.save()
+        
+        packet.seek(0)
+        
+        notePage = PdfFileReader(packet)
+        
+        page = annotedDocument.getPage(i)
+        page.mergePage(notePage.getPage(0))
+        
+        outputDoc.addPage(page)
+        
+    # Append the apendix documents
+    annexCount = 0
+
+    for n in prj.annotations:
+        # increment the appendix counter
+        annexCount = annexCount+1
+        
+        # get the PDF of the appendix document
+        apendixDoc = PdfFileReader(file(n.annotationObject.filename, "rb"))
+        
+        # Create a canvas to add annotation (file name of the appendix doc)
+        packet = StringIO.StringIO()
+        can = canvas.Canvas(packet, pagesize=A4)
+        
+        # set color
+        can.setFillColorRGB(1,0,0)
+        
+        # insert the file name of the document
+        can.drawString(150, 0.985*A4[1], "Annexe " + str(annexCount) +" - "+n.getText())
+
+        #can.rect(150, 0.9*A4[1], 150, 50, fill=1)
+        #can.linkURL('http://google.com', (150, 0.9*A4[1], 150, 50), relative=1)
+
+        can.save()
+        
+        packet.seek(0)
+        notePage = PdfFileReader(packet)
+
+        # annotate each page of the appendix doc and append it to the global output doc
+        for i in range(apendixDoc.getNumPages()):
+            page = apendixDoc.getPage(i)
+            page.mergePage(notePage.getPage(0))
+            
+            outputDoc.addPage(page) 
+        
+    # finally, write "output" to a real file
+    outputStream = file("testout.pdf", "wb")
+    outputDoc.write(outputStream)
+    outputStream.close()
+    
     
 #***********************************************************************
 #***********************************************************************
@@ -179,8 +317,10 @@ class MainPanel(wx.Panel):
         notes = self.noteToDraw
         dc.SetTextBackground(wx.RED)
         dc.SetTextForeground(wx.RED)
+        i=0
         for n in notes:
-            dc.DrawText(n.getText(), n.posX*panSize.GetWidth(), n.posY*panSize.GetHeight())
+            i=i+1
+            dc.DrawText("An. "+str(i)+": "+n.getText(), n.posX*panSize.GetWidth(), n.posY*panSize.GetHeight())
             
 
     #----------------------------------------------------------------------
@@ -249,10 +389,12 @@ class MainFrame(wx.Frame):
         nextBut = tb.AddTool(102,wx.Bitmap("icon/icone_stepForward.png")) 
         saveBut = tb.AddTool(103,wx.Bitmap("icon/icone_save.png")) 
         loadBut = tb.AddTool(104,wx.Bitmap("icon/icone_open.png")) 
+        exportBut = tb.AddTool(105,wx.Bitmap("icon/icone_generate.png")) 
         tb.Bind(wx.EVT_TOOL, self.prevPage, source=prevBut)
         tb.Bind(wx.EVT_TOOL, self.nextPage, source=nextBut)
         tb.Bind(wx.EVT_TOOL, self.save, source=saveBut)
         tb.Bind(wx.EVT_TOOL, self.load, source=loadBut)
+        tb.Bind(wx.EVT_TOOL, self.export, source=exportBut)
         
         tb.Realize() 
         # - - - - 
@@ -296,8 +438,13 @@ class MainFrame(wx.Frame):
     def addAnnotation(self, note):
         note.pageNb = self.pageId
         self.annotationProject.annotations.append(note)
+        
+        self.annotationProject.sortAnnotations()
+        
         self.setNoteToDraw()
         self.panel.Refresh()
+        
+        print "Add note...."
         
     def setNoteToDraw(self):
         for n in self.annotationProject.annotations:
@@ -319,113 +466,30 @@ class MainFrame(wx.Frame):
         fp.close()  
         self.updatePage()    
         
-
-########################################################################
-
-from pyPdf import PdfFileWriter, PdfFileReader
-import StringIO
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-
-
-import pickle
-
-annotationProject = loadProject()
-
-
-sourceFile = "/home/ndocquier/Documents/test/pyDragAndDrop/gs/Extrait/Extrait.pdf"
-
-
-# read the base document PDF
-annotedDocument = PdfFileReader(file(sourceFile, "rb"))
-outputDoc = PdfFileWriter()
-
-nbPages = annotedDocument.getNumPages()
-
-
-# Annotate the pages of the base document
-annexCount = 0
-dx = -20
-dy = -8
-for i in range (nbPages):
-    
-    
-    packet = StringIO.StringIO()
-    # create a new PDF with Reportlab
-    can = canvas.Canvas(packet, pagesize=A4)
-    
-    # set color
-    can.setFillColorRGB(1,0,0)
-    
-    # insert the annotations for the current page
-    for n in annotationProject.annotations:
-        if n.pageNb==i+1:
-            annexCount = annexCount+1
-            can.drawString(n.posX*A4[0]+dx, (1-n.posY)*A4[1]+dy, "An. " + str(annexCount) +" - "+n.getText())
-    
-    
-    can.save()
-    
-    packet.seek(0)
-    
-    notePage = PdfFileReader(packet)
-    
-    page = annotedDocument.getPage(i)
-    page.mergePage(notePage.getPage(0))
-    
-    outputDoc.addPage(page)
-    
-# Append the apendix documents
-annexCount = 0
-
-for n in annotationProject.annotations:
-    # increment the appendix counter
-    annexCount = annexCount+1
-    
-    # get the PDF of the appendix document
-    apendixDoc = PdfFileReader(file(n.annotationObject.filename, "rb"))
-    
-    # Create a canvas to add annotation (file name of the appendix doc)
-    packet = StringIO.StringIO()
-    can = canvas.Canvas(packet, pagesize=A4)
-    
-    # set color
-    can.setFillColorRGB(1,0,0)
-    
-    # insert the file name of the document
-    can.drawString(150, 0.985*A4[1], "Annexe " + str(annexCount) +" - "+n.getText())
-    can.save()
-    
-    packet.seek(0)
-    notePage = PdfFileReader(packet)
-
-    # annotate each page of the appendix doc and append it to the global output doc
-    for i in range(apendixDoc.getNumPages()):
-        page = apendixDoc.getPage(i)
-        page.mergePage(notePage.getPage(0))
+    def export(self, e=None):
+        exportAnnotationsToPdf(self.annotationProject)
         
-        outputDoc.addPage(page) 
-    
-# finally, write "output" to a real file
-outputStream = file("testout.pdf", "wb")
-outputDoc.write(outputStream)
-outputStream.close()
+
+########################################################################
+
 
 
 ########################################################################
 
-#class Main(wx.App):
-    #""""""
- 
-    ##----------------------------------------------------------------------
-    #def __init__(self, redirect=False, filename=None):
-        #"""Constructor"""
-        #wx.App.__init__(self, redirect, filename)
-        #dlg = MainFrame()
-        #dlg.Show()
- 
-##----------------------------------------------------------------------
-#if __name__ == "__main__":
-    #app = Main()
+
+class Main(wx.App):
+    """"""
     
-    #app.MainLoop()
+ 
+    #----------------------------------------------------------------------
+    def __init__(self, redirect=False, filename=None):
+        """Constructor"""
+        wx.App.__init__(self, redirect, filename)
+        dlg = MainFrame()
+        dlg.Show()
+ 
+#----------------------------------------------------------------------
+if __name__ == "__main__":
+    app = Main()
+    
+    app.MainLoop()
