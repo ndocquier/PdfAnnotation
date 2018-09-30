@@ -168,7 +168,7 @@ def saveProject(prj):
 #***********************************************************************
 
 
-from pyPdf import PdfFileWriter, PdfFileReader
+from PyPDF2 import PdfFileWriter, PdfFileReader
 import StringIO
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
