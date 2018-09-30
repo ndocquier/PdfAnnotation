@@ -246,6 +246,8 @@ def exportAnnotationsToPdf(prj):
         can.setFillColorRGB(1,0,0)
         
         # insert the file name of the document
+        print "Adding appendix ("+str(150)+", "+str(0.985*A4[1])+")--->" + "Annexe " + str(annexCount) +" - "+n.getText()
+
         can.drawString(150, 0.985*A4[1], "Annexe " + str(annexCount) +" - "+n.getText())
 
         #can.rect(150, 0.9*A4[1], 150, 50, fill=1)
