@@ -4,6 +4,25 @@ import json
 import pickle
 import glob
 import functools
+import os
+import tempfile
+import subprocess
+
+#***********************************************************************
+
+def extractPng(pdffile):
+    """ Transform each page of the given pdf file to png images and
+        return the folder in which the images are stored
+    """
+    pdfname = os.path.splitext(os.path.basename(pdffile))[0]
+
+    tmpDir = os.path.join(tempfile.gettempdir(), 'tmp_'+pdfname+'_{}'.format(hash(os.times())))
+    os.mkdir(tmpDir)
+    
+    
+    subprocess.call(['gs', '-sDEVICE=pngalpha',  '-o',  pdfname+'_%03d.png', '-r288', pdffile], cwd = tmpDir)
+    
+    return tmpDir
 
 #***********************************************************************
 class AnnotedDocument:
@@ -17,9 +36,11 @@ class AnnotedDocument:
     def __init__(self, filepath):
         """Constructor"""  
         
-        self._pageImages=sorted(glob.glob(filepath+"/*.png"))
+        pngDir = extractPng(filepath)
+        
+        self._pageImages=sorted(glob.glob(pngDir+"/*.png"))
         self._pageNumber = len(self._pageImages)
-        self._filePath = filepath+"/Extrait.pdf"
+        self._filePath = filepath
         
     def getPageNb(self):
         return self._pageNumber
