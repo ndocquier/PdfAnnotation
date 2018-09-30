@@ -238,17 +238,20 @@ def exportAnnotationsToPdf(prj):
         # get the PDF of the appendix document
         apendixDoc = PdfFileReader(file(n.annotationObject.filename, "rb"))
         
+        #retrieve size of the appendix document
+        appendixSize = apendixDoc.getPage(0).mediaBox[2:4]
+        
         # Create a canvas to add annotation (file name of the appendix doc)
         packet = StringIO.StringIO()
-        can = canvas.Canvas(packet, pagesize=A4)
+        can = canvas.Canvas(packet, pagesize=appendixSize)
         
         # set color
         can.setFillColorRGB(1,0,0)
         
         # insert the file name of the document
-        print "Adding appendix ("+str(150)+", "+str(0.985*A4[1])+")--->" + "Annexe " + str(annexCount) +" - "+n.getText()
+        print "Adding appendix ("+str(150)+", "+str(0.985*appendixSize[1].as_numeric())+")--->" + "Annexe " + str(annexCount) +" - "+n.getText()
 
-        can.drawString(150, 0.985*A4[1], "Annexe " + str(annexCount) +" - "+n.getText())
+        can.drawString(150, 0.985*appendixSize[1].as_numeric(), "Annexe " + str(annexCount) +" - "+n.getText())
 
         #can.rect(150, 0.9*A4[1], 150, 50, fill=1)
         #can.linkURL('http://google.com', (150, 0.9*A4[1], 150, 50), relative=1)
