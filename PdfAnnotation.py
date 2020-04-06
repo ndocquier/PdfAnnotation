@@ -169,6 +169,7 @@ def saveProject(prj):
 
 
 from PyPDF2 import PdfFileWriter, PdfFileReader
+from PyPDF2.generic import NumberObject, NameObject
 import StringIO
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
@@ -237,34 +238,70 @@ def exportAnnotationsToPdf(prj):
         
         # get the PDF of the appendix document
         apendixDoc = PdfFileReader(file(n.annotationObject.filename, "rb"))
-        
-        #retrieve size of the appendix document
-        appendixSize = apendixDoc.getPage(0).mediaBox[2:4]
-        
-        # Create a canvas to add annotation (file name of the appendix doc)
-        packet = StringIO.StringIO()
-        can = canvas.Canvas(packet, pagesize=appendixSize)
-        
-        # set color
-        can.setFillColorRGB(1,0,0)
-        
-        # insert the file name of the document
-        print "Adding appendix ("+str(150)+", "+str(0.985*appendixSize[1].as_numeric())+")--->" + "Annexe " + str(annexCount) +" - "+n.getText()
-
-        can.drawString(150, 0.985*appendixSize[1].as_numeric(), "Annexe " + str(annexCount) +" - "+n.getText())
-
-        #can.rect(150, 0.9*A4[1], 150, 50, fill=1)
-        #can.linkURL('http://google.com', (150, 0.9*A4[1], 150, 50), relative=1)
-
-        can.save()
-        
-        packet.seek(0)
-        notePage = PdfFileReader(packet)
 
         # annotate each page of the appendix doc and append it to the global output doc
         for i in range(apendixDoc.getNumPages()):
+            
+            print("Adding annotation on page "+str(i))
+            
+            # Retrieve the appendix current page
             page = apendixDoc.getPage(i)
-            page.mergePage(notePage.getPage(0))
+            
+            
+            # Retrieve rotation angle of the current page
+            appendixRotate = page.get('/Rotate', 0)
+            appendixAngle = appendixRotate if isinstance(appendixRotate, int) else appendixRotate.getObject()
+                        
+            # Retrieve page dimensions
+            appendixSize = apendixDoc.getPage(0).mediaBox[2:4]
+            pageWidth = appendixSize[0]
+            pageHeight = appendixSize[1]
+            
+        
+            # If page is rotated, invert page dimensions
+            if appendixAngle%180:
+                pageWidth = appendixSize[1]
+                pageHeight = appendixSize[0]
+                appendixSize[0] = pageWidth
+                appendixSize[1] = pageHeight         
+            
+            # - - - - - - - - - - - - - - - - - - - - - - - -
+            # Create a canvas to add annotation (file name of the appendix doc)
+            packet = StringIO.StringIO()
+            can = canvas.Canvas(packet, pagesize=appendixSize)
+            
+            # set color
+            can.setFillColorRGB(1,0,0)
+            
+            # insert the file name of the document
+            print "Adding appendix ("+str(150)+", "+str(0.985*pageHeight.as_numeric())+")--->" + "Annexe " + str(annexCount) +" - "+n.getText()
+
+            can.drawString(150, 0.985*pageHeight.as_numeric(), "Annexe " + str(annexCount) +" - "+n.getText())
+
+            #can.rect(150, 0.9*A4[1], 150, 50, fill=1)
+            #can.linkURL('http://google.com', (150, 0.9*A4[1], 150, 50), relative=1)
+
+            can.save()
+            
+            packet.seek(0)
+            annotationDoc = PdfFileReader(packet)            
+            
+            annotationPage = annotationDoc.getPage(0)
+
+            # - - - - - - - - - - - - - - - - - - - - - - - -
+            
+            
+            
+            if appendixAngle:
+                print("Rotate page, angle: "+str(appendixAngle)+" - w:"+str(pageWidth)+" - h "+str(pageHeight))
+                # page.mergeRotatedPage(notePageObj, appendixAngle, True)
+                # page.mergeRotatedTranslatedPage(notePageObj, appendixAngle, notePageObj.mediaBox.getWidth() / 2, notePageObj.mediaBox.getHeight() / 2)
+                
+                # page.mergeRotatedTranslatedPage(annotationPage, appendixAngle, pageWidth/2,pageWidth/2, True)
+                x_rotate = min(pageWidth, pageHeight)/2
+                page.mergeRotatedTranslatedPage(annotationPage, appendixAngle, x_rotate, x_rotate, True)
+            else:
+                page.mergePage(annotationPage)
             
             outputDoc.addPage(page) 
         
