@@ -71,14 +71,50 @@ class TextAnnotation(AnnotationObject):
 class FileAnnotation(AnnotationObject):
     
     filename = ""
+    page_to_append = None
     
     def __init__(self, f):
         """Constructor""" 
         self.filename = f
+        
+        # define page to append
+        with open('page_selection.json') as json_file:
+            pages = json.load(json_file)
+        # retrieve supplier namer
+        
+        try:
+            supplier = f.split("_")[1]
+            self.page_to_append = pages[supplier]
+        except IndexError:
+            # do nothing if there was not token separated by "_"
+            pass
+        except KeyError:
+            # do nothing if the name is not in the dictionary
+            pass
+        
     
     def getText(self):
+        """ Return the text defining this annotation """
         return ntpath.basename(self.filename)
-    
+        
+    def getInfo(self):
+        """ Return info about this annotation, i.e. the pages to 
+            append, ....
+        """
+        txt = ""
+        if self.page_to_append:
+            txt += "pp"
+            for p in self.page_to_append:
+                txt+= str(p)
+        return txt
+                
+    def getPageToAppend(self):
+        """ Return which page must be appended when generating the full
+            document
+            return: * a list containing the number of pages that must be appended
+                    * None if all page of document must be appended   
+        """    
+        return self.page_to_append
 
 #***********************************************************************
 class Annotation:
@@ -97,6 +133,9 @@ class Annotation:
         
     def getText(self):
         return self.annotationObject.getText()
+
+    def getInfo(self):
+        return self.annotationObject.getInfo()
 
 def compareAnnotation(n1, n2):
     if n1.pageNb == n2.pageNb:
@@ -242,68 +281,71 @@ def exportAnnotationsToPdf(prj):
         # annotate each page of the appendix doc and append it to the global output doc
         for i in range(apendixDoc.getNumPages()):
             
-            print("Adding annotation on page "+str(i))
-            
-            # Retrieve the appendix current page
-            page = apendixDoc.getPage(i)
-            
-            
-            # Retrieve rotation angle of the current page
-            appendixRotate = page.get('/Rotate', 0)
-            appendixAngle = appendixRotate if isinstance(appendixRotate, int) else appendixRotate.getObject()
-                        
-            # Retrieve page dimensions
-            appendixSize = apendixDoc.getPage(0).mediaBox[2:4]
-            pageWidth = appendixSize[0]
-            pageHeight = appendixSize[1]
-            
-        
-            # If page is rotated, invert page dimensions
-            if appendixAngle%180:
-                pageWidth = appendixSize[1]
-                pageHeight = appendixSize[0]
-                appendixSize[0] = pageWidth
-                appendixSize[1] = pageHeight         
-            
-            # - - - - - - - - - - - - - - - - - - - - - - - -
-            # Create a canvas to add annotation (file name of the appendix doc)
-            packet = StringIO.StringIO()
-            can = canvas.Canvas(packet, pagesize=appendixSize)
-            
-            # set color
-            can.setFillColorRGB(1,0,0)
-            
-            # insert the file name of the document
-            print "Adding appendix ("+str(150)+", "+str(0.985*pageHeight.as_numeric())+")--->" + "Annexe " + str(annexCount) +" - "+n.getText()
-
-            can.drawString(150, 0.985*pageHeight.as_numeric(), "Annexe " + str(annexCount) +" - "+n.getText())
-
-            #can.rect(150, 0.9*A4[1], 150, 50, fill=1)
-            #can.linkURL('http://google.com', (150, 0.9*A4[1], 150, 50), relative=1)
-
-            can.save()
-            
-            packet.seek(0)
-            annotationDoc = PdfFileReader(packet)            
-            
-            annotationPage = annotationDoc.getPage(0)
-
-            # - - - - - - - - - - - - - - - - - - - - - - - -
-            
-            
-            
-            if appendixAngle:
-                print("Rotate page, angle: "+str(appendixAngle)+" - w:"+str(pageWidth)+" - h "+str(pageHeight))
-                # page.mergeRotatedPage(notePageObj, appendixAngle, True)
-                # page.mergeRotatedTranslatedPage(notePageObj, appendixAngle, notePageObj.mediaBox.getWidth() / 2, notePageObj.mediaBox.getHeight() / 2)
+            page_to_append = n.annotationObject.page_to_append
+            if (not page_to_append) or (page_to_append and i+1 in page_to_append):
                 
-                # page.mergeRotatedTranslatedPage(annotationPage, appendixAngle, pageWidth/2,pageWidth/2, True)
-                x_rotate = min(pageWidth, pageHeight)/2
-                page.mergeRotatedTranslatedPage(annotationPage, appendixAngle, x_rotate, x_rotate, True)
-            else:
-                page.mergePage(annotationPage)
+                print("Adding annotation on page "+str(i))
+                
+                # Retrieve the appendix current page
+                page = apendixDoc.getPage(i)
+                
+                
+                # Retrieve rotation angle of the current page
+                appendixRotate = page.get('/Rotate', 0)
+                appendixAngle = appendixRotate if isinstance(appendixRotate, int) else appendixRotate.getObject()
+                            
+                # Retrieve page dimensions
+                appendixSize = apendixDoc.getPage(0).mediaBox[2:4]
+                pageWidth = appendixSize[0]
+                pageHeight = appendixSize[1]
+                
             
-            outputDoc.addPage(page) 
+                # If page is rotated, invert page dimensions
+                if appendixAngle%180:
+                    pageWidth = appendixSize[1]
+                    pageHeight = appendixSize[0]
+                    appendixSize[0] = pageWidth
+                    appendixSize[1] = pageHeight         
+                
+                # - - - - - - - - - - - - - - - - - - - - - - - -
+                # Create a canvas to add annotation (file name of the appendix doc)
+                packet = StringIO.StringIO()
+                can = canvas.Canvas(packet, pagesize=appendixSize)
+                
+                # set color
+                can.setFillColorRGB(1,0,0)
+                
+                # insert the file name of the document
+                print "Adding appendix ("+str(150)+", "+str(0.985*pageHeight.as_numeric())+")--->" + "Annexe " + str(annexCount) +" - "+n.getText()
+
+                can.drawString(150, 0.985*pageHeight.as_numeric(), "Annexe " + str(annexCount) +" - "+n.getText())
+
+                #can.rect(150, 0.9*A4[1], 150, 50, fill=1)
+                #can.linkURL('http://google.com', (150, 0.9*A4[1], 150, 50), relative=1)
+
+                can.save()
+                
+                packet.seek(0)
+                annotationDoc = PdfFileReader(packet)            
+                
+                annotationPage = annotationDoc.getPage(0)
+
+                # - - - - - - - - - - - - - - - - - - - - - - - -
+                
+                
+                
+                if appendixAngle:
+                    print("Rotate page, angle: "+str(appendixAngle)+" - w:"+str(pageWidth)+" - h "+str(pageHeight))
+                    # page.mergeRotatedPage(notePageObj, appendixAngle, True)
+                    # page.mergeRotatedTranslatedPage(notePageObj, appendixAngle, notePageObj.mediaBox.getWidth() / 2, notePageObj.mediaBox.getHeight() / 2)
+                    
+                    # page.mergeRotatedTranslatedPage(annotationPage, appendixAngle, pageWidth/2,pageWidth/2, True)
+                    x_rotate = min(pageWidth, pageHeight)/2
+                    page.mergeRotatedTranslatedPage(annotationPage, appendixAngle, x_rotate, x_rotate, True)
+                else:
+                    page.mergePage(annotationPage)
+                
+                outputDoc.addPage(page) 
         
     # finally, write "output" to a real file
     outputStream = file("testout.pdf", "wb")
@@ -383,7 +425,7 @@ class MainPanel(wx.Panel):
         i=0
         for n in notes:
             i=i+1
-            dc.DrawText("An. "+str(i)+": "+n.getText(), n.posX*panSize.GetWidth(), n.posY*panSize.GetHeight())
+            dc.DrawText("An. "+str(i)+": "+n.getText() + "  ["+n.getInfo()+"]", n.posX*panSize.GetWidth(), n.posY*panSize.GetHeight())
             
 
     #----------------------------------------------------------------------
