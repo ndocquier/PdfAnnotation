@@ -412,7 +412,7 @@ class MainPanel(wx.Panel):
  
         
         self.Bind(wx.EVT_ERASE_BACKGROUND, self.OnEraseBackground)
-        #self.bmp = wx.Bitmap("./test.png")
+        self.bmp = None
  
     #----------------------------------------------------------------------
     def OnEraseBackground(self, evt):
@@ -435,20 +435,20 @@ class MainPanel(wx.Panel):
 
         panSize = self.GetSize()
         
-        
-
-        #image = wx.ImageFromBitmap(bmp)
-        image = self.bmp.ConvertToImage()
-        #image = image.Scale(self.ImWidth, self.ImHeight, wx.IMAGE_QUALITY_HIGH)
-        newWidth = float(panSize.GetWidth())/self.bmp.GetWidth()
-        newHeight = float(panSize.GetHeight())/self.bmp.GetHeight()
-        #print "size: w="+str(newWidth)+" - h="+str(newHeight)
-        image = image.Scale(panSize.GetWidth(),
-                            panSize.GetHeight(),
-                            wx.IMAGE_QUALITY_HIGH)
-        resizedBmp = wx.BitmapFromImage(image)        
-        
-        dc.DrawBitmap(resizedBmp, 0, 0)
+        # Draw the current page as the background image
+        if self.bmp is not None:
+            #image = wx.ImageFromBitmap(bmp)
+            image = self.bmp.ConvertToImage()
+            #image = image.Scale(self.ImWidth, self.ImHeight, wx.IMAGE_QUALITY_HIGH)
+            newWidth = float(panSize.GetWidth())/self.bmp.GetWidth()
+            newHeight = float(panSize.GetHeight())/self.bmp.GetHeight()
+            #print "size: w="+str(newWidth)+" - h="+str(newHeight)
+            image = image.Scale(panSize.GetWidth(),
+                                panSize.GetHeight(),
+                                wx.IMAGE_QUALITY_HIGH)
+            resizedBmp = wx.Bitmap(image)        
+            
+            dc.DrawBitmap(resizedBmp, 0, 0)
         
         
         # draw the annotations
@@ -538,13 +538,14 @@ class MainFrame(wx.Frame):
     """"""
  
     pageId = 0
-    annotationProject = None
+    
  
     #----------------------------------------------------------------------
     def __init__(self):
         """Constructor"""
         #self.load()
-        self.annotationProject = AnnotationProject(os.path.join(os.getcwd(),"Extrait/ReleveMastercard_20230707.pdf"))
+        self.annotationProject = None
+        # self.annotationProject = AnnotationProject(os.path.join(os.getcwd(),"Extrait/ReleveMastercard_20230707.pdf"))
         # self.annotationProject = AnnotationProject(os.path.join(os.getcwd(),"Extrait/Extrait_2023T3.pdf"))
 
 
@@ -562,12 +563,14 @@ class MainFrame(wx.Frame):
         # - - - - 
         tb = wx.ToolBar( self, -1 ) 
         self.ToolBar = tb 
-        #buttons to manage current page 
-        prevBut = tb.AddTool(101, "prev", wx.Bitmap("icon/icone_stepBackward.png") ) 
-        nextBut = tb.AddTool(102, "next", wx.Bitmap("icon/icone_stepForward.png")) 
-        saveBut = tb.AddTool(103, "save", wx.Bitmap("icon/icone_save.png")) 
-        loadBut = tb.AddTool(104, "load", wx.Bitmap("icon/icone_open.png")) 
-        exportBut = tb.AddTool(105, "export", wx.Bitmap("icon/icone_generate.png")) 
+        # buttons to manage current page 
+        newBut = tb.AddTool(wx.ID_ANY, "new", wx.Bitmap("icon/icone_new.png") ) 
+        prevBut = tb.AddTool(wx.ID_ANY, "prev", wx.Bitmap("icon/icone_stepBackward.png") ) 
+        nextBut = tb.AddTool(wx.ID_ANY, "next", wx.Bitmap("icon/icone_stepForward.png")) 
+        saveBut = tb.AddTool(wx.ID_ANY, "save", wx.Bitmap("icon/icone_save.png")) 
+        loadBut = tb.AddTool(wx.ID_ANY, "load", wx.Bitmap("icon/icone_open.png")) 
+        exportBut = tb.AddTool(wx.ID_ANY, "export", wx.Bitmap("icon/icone_generate.png")) 
+        tb.Bind(wx.EVT_TOOL, self.newProject, source=newBut)
         tb.Bind(wx.EVT_TOOL, self.prevPage, source=prevBut)
         tb.Bind(wx.EVT_TOOL, self.nextPage, source=nextBut)
         tb.Bind(wx.EVT_TOOL, self.save, source=saveBut)
@@ -588,7 +591,32 @@ class MainFrame(wx.Frame):
     def setImageFile(self, imagefile):
         self.panel.setImageFile(imagefile)
     
+    def openPdfFile(self, pdfFilename):
+        self.annotationProject = AnnotationProject(pdfFilename)
+        self.pageId = 1
+        self.updatePage()        
     
+    def newProject(self, e):
+        """ Open a dialog to choose a PDF file to annotate and
+            then create a new AnnotationProject if a correct file is
+            selected.
+        """
+        print("New project")
+        with wx.FileDialog(self, "Open PDF file to annotate", wildcard="PDF files (*.pdf)|*.pdf",
+                           style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as fileDialog:
+
+            if fileDialog.ShowModal() == wx.ID_CANCEL:
+                return     # the user changed their mind
+
+            # Proceed loading the file chosen by the user
+            pdfFilename = fileDialog.GetPath()
+            try:
+                self.openPdfFile(pdfFilename)
+            except IOError:
+                print("Error while opening PDF file '%s'." % pdfFilename)
+                wx.LogError("Cannot open file '%s'." % pdfFilename)         
+        
+
     def nextPage(self, e):
         print("Next page")
         self.pageId = self.pageId+1
@@ -600,6 +628,9 @@ class MainFrame(wx.Frame):
         self.updatePage()
         
     def updatePage(self):
+        if self.annotationProject is None:
+            return
+            
         doc = self.annotationProject.mainDocument
         if self.pageId<1:
             self.pageId = doc.getPageNb()
