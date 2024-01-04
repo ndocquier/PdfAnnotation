@@ -187,6 +187,7 @@ class AnnotationProject:
         if not os.path.isfile(filepath):
             raise FileNotFoundError(filepath)
     
+        self.filepath = filepath
         self.mainDocument = AnnotedDocument(filepath)
 
         self.annotations = []
@@ -219,8 +220,11 @@ def loadProject() :
     
     
 def saveProject(prj):
-    fp = open('my_json.pick', 'wb')
-    pickle.dump(prj, fp)  
+    # fp = open('my_json.pick', 'wb')
+    # pickle.dump(prj, fp)  
+    # fp.close()    
+    fp = open('my_project.json', 'wb')
+    json.dump(prj, fp)  
     fp.close()    
     
     
@@ -670,15 +674,17 @@ class MainFrame(wx.Frame):
         self.panel.noteToDraw = newNotes
         
     def save(self, e):
-        fp = open('my_json.pick', 'wb')
-        pickle.dump(self.annotationProject, fp)  
-        fp.close()
+        # fp = open('my_json.pick', 'wb')
+        # pickle.dump(self.annotationProject, fp)  
+        # fp.close()
+        print("save...")
+        with open('my_project.json', 'w') as fp:
+            json.dump(self.annotationProject, fp, cls=AnnotationEncoder, indent=2)
+        # print(AnnotationEncoder(indent=2).encode(self.annotationProject))
             
     def load(self, e=None):
-        fp = open('my_json.pick', 'rb')
-        self.annotationProject = pickle.load(fp)
-        print(self.annotationProject.mainDocument._pageImages)
-        fp.close()  
+        with open('my_project.json', 'rb') as fp:
+            self.annotationProject = json.load(fp, cls=AnnotationDecoder)
         self.updatePage()    
         
     def export(self, e=None):
@@ -687,7 +693,38 @@ class MainFrame(wx.Frame):
 
 ########################################################################
 
+from json import JSONEncoder
+class AnnotationEncoder(JSONEncoder):
+    def default(self, o):
+        if isinstance(o, AnnotedDocument):
+            return None
+        return o.__dict__    
 
+class AnnotationDecoder(json.JSONDecoder):
+    
+    def __init__(self, *args, **kwargs):
+        json.JSONDecoder.__init__(self, object_hook=self.object_hook, *args, **kwargs)
+    
+    def object_hook(self, dct):
+        if 'annotationObject' in dct:
+            if 'filename' in dct['annotationObject']:
+                newNote = Annotation(FileAnnotation(dct['annotationObject']['filename']))
+            elif 'text' in dct['annotationObject']:
+                newNote = Annotation(TextAnnotation(dct['annotationObject']['text']))
+            else:
+                raise Exception("Incorrect JSON file")
+            newNote.setPosition(dct['posX'], dct['posY'])
+            newNote.pageNb = dct['pageNb']
+                
+            return newNote
+        if 'annotations' in dct:
+            prj = AnnotationProject(dct['filepath'])
+            for note in dct['annotations']:
+                prj.annotations.append(note)
+            return prj
+        return dct
+        
+       
 
 ########################################################################
 
