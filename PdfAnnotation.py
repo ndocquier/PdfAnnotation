@@ -184,6 +184,9 @@ class AnnotationProject:
     def __init__(self, filepath):
         """Constructor""" 
     
+        if not os.path.isfile(filepath):
+            raise FileNotFoundError(filepath)
+    
         self.mainDocument = AnnotedDocument(filepath)
 
         self.annotations = []
