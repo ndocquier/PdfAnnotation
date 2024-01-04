@@ -7,6 +7,7 @@ import functools
 import os
 import tempfile
 import subprocess
+import sys
 
 #***********************************************************************
 
@@ -541,10 +542,12 @@ class MainFrame(wx.Frame):
     
  
     #----------------------------------------------------------------------
-    def __init__(self):
+    def __init__(self, initFile = None):
         """Constructor"""
         #self.load()
         self.annotationProject = None
+        if initFile:
+            self.annotationProject = AnnotationProject(os.path.abspath(initFile))
         # self.annotationProject = AnnotationProject(os.path.join(os.getcwd(),"Extrait/ReleveMastercard_20230707.pdf"))
         # self.annotationProject = AnnotationProject(os.path.join(os.getcwd(),"Extrait/Extrait_2023T3.pdf"))
 
@@ -694,11 +697,16 @@ class Main(wx.App):
     def __init__(self, redirect=False, filename=None):
         """Constructor"""
         wx.App.__init__(self, redirect, filename)
-        dlg = MainFrame()
+        dlg = MainFrame(filename)
         dlg.Show()
  
 #----------------------------------------------------------------------
 if __name__ == "__main__":
-    app = Main()
-    
+
+    # Retrieve PDF file from cmd arguments if any
+    initFile = None
+    if len(sys.argv)>1:
+        initFile = sys.argv[1]
+
+    app = Main(False, initFile)
     app.MainLoop()
