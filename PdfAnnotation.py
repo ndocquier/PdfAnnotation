@@ -59,13 +59,28 @@ class AnnotationObject:
 
     def getText(self):
         return ""
+        
+    def hasAppendix(self):
+        return False
     
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 class TextAnnotation(AnnotationObject):
-    text = "hello"
+    text = ""
+    
+    def __init__(self, t):
+        """Constructor""" 
+        self.text = t
     
     def getText(self):
-        return text
+        """ Return the text defining this annotation """
+        return self.text
+        
+    def getInfo(self):
+        """ Return info about this annotation, i.e. the pages to 
+            append, ....
+        """
+        txt = ""
+        return txt
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 class FileAnnotation(AnnotationObject):
@@ -107,7 +122,10 @@ class FileAnnotation(AnnotationObject):
             for p in self.page_to_append:
                 txt+= str(p)
         return txt
-                
+        
+    def hasAppendix(self):
+        return True
+                        
     def getPageToAppend(self):
         """ Return which page must be appended when generating the full
             document
@@ -115,6 +133,7 @@ class FileAnnotation(AnnotationObject):
                     * None if all page of document must be appended   
         """    
         return self.page_to_append
+
 
 #***********************************************************************
 class Annotation:
@@ -136,6 +155,9 @@ class Annotation:
 
     def getInfo(self):
         return self.annotationObject.getInfo()
+        
+    def hasAppendix(self):
+        return self.annotationObject.hasAppendix()
 
 def compareAnnotation(n1, n2):
     if n1.pageNb == n2.pageNb:
@@ -181,7 +203,7 @@ class AnnotationProject:
         
     def printAnnotations(self):
         for n in self.annotations:
-            print n.getText()
+            print(n.getText())
 
 #***********************************************************************
 
@@ -209,7 +231,8 @@ def saveProject(prj):
 
 from PyPDF2 import PdfFileWriter, PdfFileReader
 from PyPDF2.generic import NumberObject, NameObject
-import StringIO
+# import StringIO
+import io
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 
@@ -226,10 +249,10 @@ def exportAnnotationsToPdf(prj):
     # retrieve the path to the annoted PDF
     sourceFile = prj.mainDocument.getFilePath()
     
-    print "sourcfile: "+sourceFile
+    print("sourcfile: "+sourceFile)
 
     # read the base document PDF
-    annotedDocument = PdfFileReader(file(sourceFile, "rb"))
+    annotedDocument = PdfFileReader(open(sourceFile, "rb"))
     outputDoc = PdfFileWriter()
 
     # store the number of pages in the original document
@@ -243,7 +266,7 @@ def exportAnnotationsToPdf(prj):
     for i in range (nbPages):
         
         
-        packet = StringIO.StringIO()
+        packet = io.BytesIO()
         # create a new PDF with Reportlab
         can = canvas.Canvas(packet, pagesize=A4)
         
@@ -253,8 +276,14 @@ def exportAnnotationsToPdf(prj):
         # insert the annotations for the current page
         for n in prj.annotations:
             if n.pageNb==i+1:
-                annexCount = annexCount+1
-                can.drawString(n.posX*A4[0]+dx, (1-n.posY)*A4[1]+dy, "An. " + str(annexCount) +" - "+n.getText())
+                
+                
+                text_to_draw = n.getText()
+                if n.hasAppendix():
+                    annexCount = annexCount+1
+                    text_to_draw = "An. "+str(annexCount)+" - "+text_to_draw
+                
+                can.drawString(n.posX*A4[0]+dx, (1-n.posY)*A4[1]+dy, text_to_draw)
         
         
         can.save()
@@ -272,11 +301,15 @@ def exportAnnotationsToPdf(prj):
     annexCount = 0
 
     for n in prj.annotations:
+        
+        if not n.hasAppendix():
+            continue
+        
         # increment the appendix counter
         annexCount = annexCount+1
         
         # get the PDF of the appendix document
-        apendixDoc = PdfFileReader(file(n.annotationObject.filename, "rb"))
+        apendixDoc = PdfFileReader(open(n.annotationObject.filename, "rb"))
 
         # annotate each page of the appendix doc and append it to the global output doc
         for i in range(apendixDoc.getNumPages()):
@@ -309,14 +342,14 @@ def exportAnnotationsToPdf(prj):
                 
                 # - - - - - - - - - - - - - - - - - - - - - - - -
                 # Create a canvas to add annotation (file name of the appendix doc)
-                packet = StringIO.StringIO()
+                packet = io.BytesIO()
                 can = canvas.Canvas(packet, pagesize=appendixSize)
                 
                 # set color
                 can.setFillColorRGB(1,0,0)
                 
                 # insert the file name of the document
-                print "Adding appendix ("+str(150)+", "+str(0.985*pageHeight.as_numeric())+")--->" + "Annexe " + str(annexCount) +" - "+n.getText()
+                print("Adding appendix ("+str(150)+", "+str(0.985*pageHeight.as_numeric())+")--->" + "Annexe " + str(annexCount) +" - "+n.getText() )
 
                 can.drawString(150, 0.985*pageHeight.as_numeric(), "Annexe " + str(annexCount) +" - "+n.getText())
 
@@ -348,7 +381,7 @@ def exportAnnotationsToPdf(prj):
                 outputDoc.addPage(page) 
         
     # finally, write "output" to a real file
-    outputStream = file("testout.pdf", "wb")
+    outputStream = open("testout.pdf", "wb")
     outputDoc.write(outputStream)
     outputStream.close()
     
@@ -379,7 +412,7 @@ class MainPanel(wx.Panel):
  
         
         self.Bind(wx.EVT_ERASE_BACKGROUND, self.OnEraseBackground)
-        self.bmp = wx.Bitmap("./test.png")
+        #self.bmp = wx.Bitmap("./test.png")
  
     #----------------------------------------------------------------------
     def OnEraseBackground(self, evt):
@@ -424,8 +457,12 @@ class MainPanel(wx.Panel):
         dc.SetTextForeground(wx.RED)
         i=0
         for n in notes:
-            i=i+1
-            dc.DrawText("An. "+str(i)+": "+n.getText() + "  ["+n.getInfo()+"]", n.posX*panSize.GetWidth(), n.posY*panSize.GetHeight())
+            
+            text_to_draw = n.getText() + "  ["+n.getInfo()+"]"
+            if n.hasAppendix():
+                i=i+1
+                text_to_draw = "An. "+str(i)+": "+text_to_draw
+            dc.DrawText(text_to_draw, n.posX*panSize.GetWidth(), n.posY*panSize.GetHeight())
             
 
     #----------------------------------------------------------------------
@@ -461,6 +498,40 @@ class FileAnnotationDropTarget(wx.FileDropTarget):
                             float(y)/self.panel.GetSize().GetHeight())
         self.panel.frame.addAnnotation(newNote)
 
+########################################################################
+class FileTextAnnotationDropTarget(wx.TextDropTarget):
+ 
+    #----------------------------------------------------------------------
+    def __init__(self, panel):
+        wx.TextDropTarget.__init__(self)
+        self.panel = panel
+ 
+    #----------------------------------------------------------------------
+    def OnDropText(self, x, y, text):
+        
+        # Check whether text corresponds to a file
+        is_file = False
+        if text.startswith("file:///"):
+            filename = text[7:].strip()
+            if os.path.isfile(filename):
+                is_file = True
+                print("\nA file dropped at %d,%d:\n" % (x, y))
+                
+                newNote = Annotation(FileAnnotation(filename))
+                newNote.setPosition(float(x)/self.panel.GetSize().GetWidth(),
+                                    float(y)/self.panel.GetSize().GetHeight())
+                self.panel.frame.addAnnotation(newNote)
+        if not is_file:
+            newNote = Annotation(TextAnnotation(text))
+            newNote.setPosition(float(x)/self.panel.GetSize().GetWidth(),
+                                float(y)/self.panel.GetSize().GetHeight())
+            self.panel.frame.addAnnotation(newNote)            
+        
+ 
+    #----------------------------------------------------------------------
+    def OnDragOver(self, x, y, d):
+        return wx.DragCopy
+
 
 ########################################################################
 class MainFrame(wx.Frame):
@@ -473,7 +544,8 @@ class MainFrame(wx.Frame):
     def __init__(self):
         """Constructor"""
         #self.load()
-        self.annotationProject = AnnotationProject("/home/ndocquier/Documents/test/pyDragAndDrop/gs/Extrait")
+        self.annotationProject = AnnotationProject(os.path.join(os.getcwd(),"Extrait/ReleveMastercard_20230707.pdf"))
+        # self.annotationProject = AnnotationProject(os.path.join(os.getcwd(),"Extrait/Extrait_2023T3.pdf"))
 
 
         wx.Frame.__init__(self, None, size=(600,450))
@@ -481,7 +553,8 @@ class MainFrame(wx.Frame):
         self.Center()
         
         
-        file_drop_target = FileAnnotationDropTarget(self.panel)
+        # file_drop_target = FileAnnotationDropTarget(self.panel)
+        file_drop_target = FileTextAnnotationDropTarget(self.panel)
         self.panel.SetDropTarget(file_drop_target) 
         
         # - - - - 
@@ -490,11 +563,11 @@ class MainFrame(wx.Frame):
         tb = wx.ToolBar( self, -1 ) 
         self.ToolBar = tb 
         #buttons to manage current page 
-        prevBut = tb.AddTool(101, wx.Bitmap("icon/icone_stepBackward.png") ) 
-        nextBut = tb.AddTool(102,wx.Bitmap("icon/icone_stepForward.png")) 
-        saveBut = tb.AddTool(103,wx.Bitmap("icon/icone_save.png")) 
-        loadBut = tb.AddTool(104,wx.Bitmap("icon/icone_open.png")) 
-        exportBut = tb.AddTool(105,wx.Bitmap("icon/icone_generate.png")) 
+        prevBut = tb.AddTool(101, "prev", wx.Bitmap("icon/icone_stepBackward.png") ) 
+        nextBut = tb.AddTool(102, "next", wx.Bitmap("icon/icone_stepForward.png")) 
+        saveBut = tb.AddTool(103, "save", wx.Bitmap("icon/icone_save.png")) 
+        loadBut = tb.AddTool(104, "load", wx.Bitmap("icon/icone_open.png")) 
+        exportBut = tb.AddTool(105, "export", wx.Bitmap("icon/icone_generate.png")) 
         tb.Bind(wx.EVT_TOOL, self.prevPage, source=prevBut)
         tb.Bind(wx.EVT_TOOL, self.nextPage, source=nextBut)
         tb.Bind(wx.EVT_TOOL, self.save, source=saveBut)
@@ -508,7 +581,7 @@ class MainFrame(wx.Frame):
         self.updatePage()
         
         
-        print "RELOAD"
+        print("RELOAD")
         #self.load() 
         
 
@@ -517,12 +590,12 @@ class MainFrame(wx.Frame):
     
     
     def nextPage(self, e):
-        print "Next page"
+        print("Next page")
         self.pageId = self.pageId+1
         self.updatePage()
 
     def prevPage(self, e):
-        print "Prev page"
+        print("Prev page")
         self.pageId = self.pageId-1
         self.updatePage()
         
@@ -534,8 +607,8 @@ class MainFrame(wx.Frame):
             self.pageId = 1
             
         # update the list of note to be drawn
-        print "pageId: "+str(self.pageId)
-        print self.annotationProject.mainDocument._pageImages
+        print("pageId: "+str(self.pageId))
+        print(self.annotationProject.mainDocument._pageImages)
         self.setImageFile(self.annotationProject.mainDocument.getPageImage(self.pageId))    
         self.setNoteToDraw()
         self.panel.Refresh()
@@ -549,14 +622,14 @@ class MainFrame(wx.Frame):
         self.setNoteToDraw()
         self.panel.Refresh()
         
-        print "Add note...."
+        print("Add note....")
         
     def setNoteToDraw(self):
         for n in self.annotationProject.annotations:
-            print "page number:"+str(n.pageNb)
+            print("page number:"+str(n.pageNb))
         newNotes = [n for n in self.annotationProject.annotations if n.pageNb==self.pageId]
-        print "Current page"+str(self.pageId)
-        print newNotes
+        print("Current page"+str(self.pageId))
+        print(newNotes)
         self.panel.noteToDraw = newNotes
         
     def save(self, e):
@@ -567,7 +640,7 @@ class MainFrame(wx.Frame):
     def load(self, e=None):
         fp = open('my_json.pick', 'rb')
         self.annotationProject = pickle.load(fp)
-        print self.annotationProject.mainDocument._pageImages
+        print(self.annotationProject.mainDocument._pageImages)
         fp.close()  
         self.updatePage()    
         
